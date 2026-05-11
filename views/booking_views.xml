@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sequences -->
+    <record id="seq_vanguard_booking" model="ir.sequence">
+        <field name="name">Vanguard Booking Sequence</field>
+        <field name="code">vanguard.booking</field>
+        <field name="prefix">VB/</field>
+        <field name="padding">5</field>
+    </record>
+
+    <!-- ─── FACILITY ──────────────────────────────────────────── -->
+    <record id="view_facility_tree" model="ir.ui.view">
+        <field name="name">vanguard.facility.tree</field>
+        <field name="model">vanguard.facility</field>
+        <field name="arch" type="xml">
+            <tree><field name="name"/><field name="location"/><field name="phone"/><field name="total_assets"/><field name="total_customers"/><field name="total_bookings_today"/></tree>
+        </field>
+    </record>
+    <record id="view_facility_form" model="ir.ui.view">
+        <field name="name">vanguard.facility.form</field>
+        <field name="model">vanguard.facility</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group string="Contact">
+                            <field name="location"/>
+                            <field name="phone"/>
+                            <field name="email"/>
+                        </group>
+                        <group string="Stats">
+                            <field name="total_assets"/>
+                            <field name="total_customers"/>
+                            <field name="total_bookings_today"/>
+                            <field name="revenue_mtd" widget="monetary"/>
+                        </group>
+                    </group>
+                    <group string="Owner Credentials (App Login)">
+                        <group>
+                            <field name="owner_email" placeholder="owner@facility.com"/>
+                        </group>
+                        <group>
+                            <field name="owner_password" password="True"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Sport Assets">
+                            <field name="sport_asset_ids"><tree editable="bottom"><field name="sport_type"/><field name="count"/><field name="open_time" widget="float_time"/><field name="close_time" widget="float_time"/><field name="price_per_hour"/></tree></field>
+                        </page>
+                        <page string="Subscription Plans">
+                            <field name="plan_ids"><tree><field name="name"/><field name="plan_type"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/></tree></field>
+                        </page>
+                        <page string="Customers">
+                            <field name="customer_ids"><tree><field name="name"/><field name="phone"/><field name="customer_type"/><field name="sport_type"/><field name="active_plan_name"/></tree></field>
+                        </page>
+                        <page string="Bookings">
+                            <field name="booking_ids"><tree decoration-success="state=='confirmed'" decoration-danger="state=='cancelled'"><field name="name"/><field name="athlete_name"/><field name="sport_type"/><field name="booking_type"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/><field name="state"/></tree></field>
+                        </page>
+                        <page string="Tutors">
+                            <field name="tutor_ids"><tree editable="bottom"><field name="name"/><field name="sport_type"/><field name="phone"/><field name="experience_years"/><field name="student_count" string="Students"/><field name="is_active"/></tree></field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter"><field name="message_follower_ids"/><field name="activity_ids"/><field name="message_ids"/></div>
+            </form>
+        </field>
+    </record>
+    <record id="action_facility" model="ir.actions.act_window">
+        <field name="name">Facilities</field><field name="res_model">vanguard.facility</field><field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── SUBSCRIPTION PLAN ────────────────────────────────── -->
+    <record id="view_plan_tree" model="ir.ui.view">
+        <field name="name">vanguard.subscription.plan.tree</field>
+        <field name="model">vanguard.subscription.plan</field>
+        <field name="arch" type="xml">
+            <tree><field name="name"/><field name="facility_id"/><field name="plan_type"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/><field name="renewals"/></tree>
+        </field>
+    </record>
+    <record id="view_plan_form" model="ir.ui.view">
+        <field name="name">vanguard.subscription.plan.form</field>
+        <field name="model">vanguard.subscription.plan</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group><field name="facility_id"/><field name="plan_type"/><field name="sport_type"/></group>
+                        <group><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield" widget="monetary"/></group>
+                    </group>
+                    <notebook>
+                        <page string="Subscriptions">
+                            <field name="subscription_ids"><tree decoration-success="state=='active'" decoration-danger="state=='expired'"><field name="customer_id"/><field name="start_date"/><field name="end_date"/><field name="amount_paid"/><field name="payment_mode"/><field name="state"/></tree></field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_plan" model="ir.actions.act_window">
+        <field name="name">Subscription Plans</field><field name="res_model">vanguard.subscription.plan</field><field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── CUSTOMER ─────────────────────────────────────────── -->
+    <record id="view_customer_tree" model="ir.ui.view">
+        <field name="name">vanguard.customer.tree</field>
+        <field name="model">vanguard.customer</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="customer_type=='member'" decoration-info="customer_type=='student'">
+                <field name="name"/><field name="phone"/><field name="facility_id"/><field name="customer_type"/><field name="sport_type"/><field name="active_plan_name"/><field name="active_plan_amount"/><field name="is_expired"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_customer_form" model="ir.ui.view">
+        <field name="name">vanguard.customer.form</field>
+        <field name="model">vanguard.customer</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group><field name="phone"/><field name="facility_id"/><field name="customer_type"/><field name="sport_type"/></group>
+                        <group><!-- <field name="coaching_level" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/> --><field name="coach_assigned" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/><field name="court_assignment" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/><field name="tutor_id" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/></group>
+                    </group>
+                    <notebook>
+                        <page string="Subscriptions">
+                            <field name="subscription_ids"><tree editable="bottom" decoration-success="state=='active'" decoration-danger="state=='expired'"><field name="plan_id"/><field name="sport_type"/><field name="start_date"/><field name="end_date"/><field name="amount_paid"/><field name="payment_mode"/><field name="receipt_date"/><field name="state"/><field name="is_renewal"/></tree></field>
+                        </page>
+                        <page string="Bookings">
+                            <field name="booking_ids"><tree decoration-success="state=='confirmed'"><field name="name"/><field name="sport_type"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/><field name="state"/></tree></field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter"><field name="message_follower_ids"/><field name="message_ids"/></div>
+            </form>
+        </field>
+    </record>
+    <record id="action_customer" model="ir.actions.act_window">
+        <field name="name">Customers</field><field name="res_model">vanguard.customer</field><field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── BOOKING ───────────────────────────────────────────── -->
+    <record id="view_booking_tree" model="ir.ui.view">
+        <field name="name">vanguard.booking.tree</field>
+        <field name="model">vanguard.booking</field>
+        <field name="arch" type="xml">
+            <tree decoration-info="state=='draft'" decoration-success="state=='confirmed'" decoration-danger="state=='cancelled'">
+                <field name="name"/><field name="facility_id"/><field name="athlete_name"/><field name="sport_type"/><field name="booking_type"/><field name="court_number"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/><field name="state"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_booking_form" model="ir.ui.view">
+        <field name="name">vanguard.booking.form</field>
+        <field name="model">vanguard.booking</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_confirm" string="Confirm" type="object" class="oe_highlight" states="draft"/>
+                    <button name="action_cancel" string="Cancel" type="object" states="draft,confirmed"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,confirmed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <group><field name="facility_id"/><field name="customer_id"/><field name="athlete_name"/><field name="phone"/><field name="booking_type"/></group>
+                        <group><field name="sport_type"/><field name="sport_asset_id"/><field name="court_number"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/></group>
+                    </group>
+                    <group><field name="notes" colspan="2"/></group>
+                </sheet>
+                <div class="oe_chatter"><field name="message_follower_ids"/><field name="activity_ids"/><field name="message_ids"/></div>
+            </form>
+        </field>
+    </record>
+    <record id="action_booking" model="ir.actions.act_window">
+        <field name="name">Bookings</field><field name="res_model">vanguard.booking</field><field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── TUTOR ────────────────────────────────────────────── -->
+    <record id="view_tutor_tree" model="ir.ui.view">
+        <field name="name">vanguard.tutor.tree</field>
+        <field name="model">vanguard.tutor</field>
+        <field name="arch" type="xml">
+            <tree decoration-muted="is_active==False">
+                <field name="name"/><field name="facility_id"/><field name="sport_type"/><field name="phone"/><field name="experience_years"/><field name="student_count" string="Students"/><field name="is_active"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_tutor_form" model="ir.ui.view">
+        <field name="name">vanguard.tutor.form</field>
+        <field name="model">vanguard.tutor</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group><field name="facility_id"/><field name="sport_type"/><field name="phone"/><field name="experience_years"/><field name="is_active"/></group>
+                        <group><field name="bio" placeholder="Coaching background, certifications..."/></group>
+                    </group>
+                    <notebook>
+                        <page string="Assigned Students">
+                            <field name="student_ids"><tree><field name="name"/><field name="phone"/><!-- <field name="coaching_level"/> --><field name="sport_type"/><field name="active_plan_name"/></tree></field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_tutor" model="ir.actions.act_window">
+        <field name="name">Tutors</field><field name="res_model">vanguard.tutor</field><field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── MENUS ─────────────────────────────────────────────── -->
+    <menuitem id="menu_root" name="Vanguard"/>
+    <menuitem id="menu_facilities" name="Facilities" parent="menu_root" action="action_facility"/>
+    <menuitem id="menu_bookings" name="Bookings" parent="menu_root" action="action_booking"/>
+    <menuitem id="menu_customers" name="Customers" parent="menu_root" action="action_customer"/>
+    <menuitem id="menu_plans" name="Subscription Plans" parent="menu_root" action="action_plan"/>
+    <menuitem id="menu_tutors" name="Tutors" parent="menu_root" action="action_tutor"/>
+</odoo>

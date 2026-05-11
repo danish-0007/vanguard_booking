@@ -1,0 +1,8 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_vanguard_facility,vanguard.facility,model_vanguard_facility,base.group_user,1,1,1,1
+access_vanguard_sport_asset,vanguard.sport.asset,model_vanguard_sport_asset,base.group_user,1,1,1,1
+access_vanguard_subscription_plan,vanguard.subscription.plan,model_vanguard_subscription_plan,base.group_user,1,1,1,1
+access_vanguard_customer,vanguard.customer,model_vanguard_customer,base.group_user,1,1,1,1
+access_vanguard_customer_subscription,vanguard.customer.subscription,model_vanguard_customer_subscription,base.group_user,1,1,1,1
+access_vanguard_booking,vanguard.booking,model_vanguard_booking,base.group_user,1,1,1,1
+access_vanguard_tutor,vanguard.tutor,model_vanguard_tutor,base.group_user,1,1,1,1
