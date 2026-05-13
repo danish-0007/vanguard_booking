@@ -45,6 +45,13 @@ class VanguardFacility(models.Model):
     email = fields.Char('Email')
     owner_email = fields.Char('Owner Login Email', index=True)
     owner_password = fields.Char('Owner Password')  # plain text MVP
+    owner_phone = fields.Char('Owner Phone', index=True)
+    state = fields.Selection([
+        ('pending', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ], default='pending', tracking=True)
+
     sport_asset_ids = fields.One2many('vanguard.sport.asset', 'facility_id', string='Sport Assets')
     booking_ids = fields.One2many('vanguard.booking', 'facility_id', string='Bookings')
     customer_ids = fields.One2many('vanguard.customer', 'facility_id', string='Customers')
@@ -82,6 +89,15 @@ class VanguardFacility(models.Model):
     def _compute_total_assets(self):
         for rec in self:
             rec.total_assets = sum(rec.sport_asset_ids.mapped('count'))
+
+    def action_approve(self):
+        for rec in self:
+            rec.state = 'approved'
+
+    def action_reject(self):
+        for rec in self:
+            rec.state = 'rejected'
+
 
 
 class VanguardSportAsset(models.Model):
