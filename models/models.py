@@ -130,7 +130,7 @@ class VanguardSubscriptionPlan(models.Model):
     name = fields.Char('Plan Name', required=True)
     facility_id = fields.Many2one('vanguard.facility', required=True)
     plan_type = fields.Selection([('member', 'Member'), ('student', 'Student')], default='member', required=True)
-    sport_type = fields.Selection(SPORT_TYPES + [('all', 'All Sports')], default='all')
+    sport_type = fields.Char('Sport Type(s)', default='all')
     duration_days = fields.Integer('Duration (Days)', default=30)
     price = fields.Float('Price (₹)', default=0.0)
     subscription_ids = fields.One2many('vanguard.customer.subscription', 'plan_id', string='Subscriptions')
@@ -201,7 +201,7 @@ class VanguardCustomerSubscription(models.Model):
 
     customer_id = fields.Many2one('vanguard.customer', required=True, ondelete='cascade')
     plan_id = fields.Many2one('vanguard.subscription.plan', string='Plan')
-    sport_type = fields.Selection(SPORT_TYPES, string='Sport')
+    sport_type = fields.Char('Sport', default='all')
     start_date = fields.Date('Start Date', default=fields.Date.today)
     end_date = fields.Date('End Date', compute='_compute_end_date', store=True)
     amount_paid = fields.Float('Amount Paid (₹)')
@@ -211,6 +211,15 @@ class VanguardCustomerSubscription(models.Model):
         ('active', 'Active'), ('expired', 'Expired'), ('cancelled', 'Cancelled'),
     ], default='active', tracking=True)
     is_renewal = fields.Boolean('Is Renewal', default=False)
+
+    # Permanent / auto-booking recurrence details
+    booking_recurrence = fields.Selection([
+        ('daily', 'Book Daily'),
+        ('permanent', 'Permanent Slot'),
+    ], default='daily', string='Booking Recurrence')
+    preferred_sport = fields.Selection(SPORT_TYPES, string='Preferred Sport')
+    preferred_court = fields.Integer('Preferred Court')
+    preferred_hour = fields.Integer('Preferred Hour (24h)')
 
     @api.depends('start_date', 'plan_id.duration_days')
     def _compute_end_date(self):
