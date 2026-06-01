@@ -59,6 +59,22 @@
                         </group>
                     </group>
                     <notebook>
+                        <page string="Verification Proofs">
+                            <group>
+                                <group string="Documents &amp; Coordinates">
+                                    <field name="company_registration_no"/>
+                                    <field name="turf_location_coords"/>
+                                    <field name="verification_doc_name" invisible="1"/>
+                                    <field name="verification_doc" filename="verification_doc_name"/>
+                                </group>
+                                <group string="Turf Images (GPS Location Verified)">
+                                    <field name="turf_img1" widget="image" options="{'size': [150, 150]}"/>
+                                    <field name="turf_img2" widget="image" options="{'size': [150, 150]}"/>
+                                    <field name="turf_img3" widget="image" options="{'size': [150, 150]}"/>
+                                    <field name="turf_img4" widget="image" options="{'size': [150, 150]}"/>
+                                </group>
+                            </group>
+                        </page>
                         <page string="Sport Assets">
                             <field name="sport_asset_ids"><tree editable="bottom"><field name="sport_type"/><field name="count"/><field name="open_time" widget="float_time"/><field name="close_time" widget="float_time"/><field name="price_per_hour"/></tree></field>
                         </page>

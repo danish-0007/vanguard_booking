@@ -52,6 +52,15 @@ class VanguardFacility(models.Model):
         ('rejected', 'Rejected'),
     ], default='pending', tracking=True)
 
+    verification_doc = fields.Binary('Verification ID (Aadhar/PAN Card)', attachment=True)
+    verification_doc_name = fields.Char('Verification ID Filename')
+    turf_img1 = fields.Binary('Turf Image 1', attachment=True)
+    turf_img2 = fields.Binary('Turf Image 2', attachment=True)
+    turf_img3 = fields.Binary('Turf Image 3', attachment=True)
+    turf_img4 = fields.Binary('Turf Image 4', attachment=True)
+    turf_location_coords = fields.Char('Turf GPS Coordinates')
+    company_registration_no = fields.Char('Business Registration Number (GSTIN/MSME/PAN)')
+
     sport_asset_ids = fields.One2many('vanguard.sport.asset', 'facility_id', string='Sport Assets')
     booking_ids = fields.One2many('vanguard.booking', 'facility_id', string='Bookings')
     customer_ids = fields.One2many('vanguard.customer', 'facility_id', string='Customers')
@@ -78,10 +87,11 @@ class VanguardFacility(models.Model):
 
     @api.model
     def authenticate_owner(self, email, password):
-        """Returns facility_id if credentials match, 0 otherwise."""
+        """Returns facility_id if credentials match and state is approved, 0 otherwise."""
         facility = self.search([
             ('owner_email', '=', email),
             ('owner_password', '=', password),
+            ('state', '=', 'approved'),
         ], limit=1)
         return facility.id if facility else 0
 
