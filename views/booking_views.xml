@@ -240,6 +240,49 @@
         <field name="name">Tutors</field><field name="res_model">vanguard.tutor</field><field name="view_mode">tree,form</field>
     </record>
 
+    <!-- ─── COACHING CLASS ────────────────────────────────────── -->
+    <record id="view_coaching_class_tree" model="ir.ui.view">
+        <field name="name">vanguard.coaching.class.tree</field>
+        <field name="model">vanguard.coaching.class</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="facility_id"/>
+                <field name="sport_type"/>
+                <field name="court_number"/>
+                <field name="start_hour"/>
+                <field name="end_hour"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_coaching_class_form" model="ir.ui.view">
+        <field name="name">vanguard.coaching.class.form</field>
+        <field name="model">vanguard.coaching.class</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="facility_id"/>
+                            <field name="sport_type"/>
+                            <field name="court_number"/>
+                        </group>
+                        <group>
+                            <field name="start_hour"/>
+                            <field name="end_hour"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_coaching_class" model="ir.actions.act_window">
+        <field name="name">Student Class Times</field>
+        <field name="res_model">vanguard.coaching.class</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
     <!-- ─── MENUS ─────────────────────────────────────────────── -->
     <menuitem id="menu_root" name="Vanguard"/>
     <menuitem id="menu_facilities" name="Facilities" parent="menu_root" action="action_facility"/>
@@ -247,4 +290,5 @@
     <menuitem id="menu_customers" name="Customers" parent="menu_root" action="action_customer"/>
     <menuitem id="menu_plans" name="Subscription Plans" parent="menu_root" action="action_plan"/>
     <menuitem id="menu_tutors" name="Tutors" parent="menu_root" action="action_tutor"/>
+    <menuitem id="menu_coaching_classes" name="Student Class Times" parent="menu_root" action="action_coaching_class"/>
 </odoo>

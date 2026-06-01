@@ -230,6 +230,19 @@ class VanguardCustomerSubscription(models.Model):
                 rec.end_date = rec.start_date
 
 
+class VanguardCoachingClass(models.Model):
+    _name = 'vanguard.coaching.class'
+    _description = 'Student Coaching Class'
+    _order = 'start_hour asc'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    name = fields.Char('Class Name', required=True)
+    sport_type = fields.Selection(SPORT_TYPES, required=True)
+    court_number = fields.Integer('Court Number', default=1)
+    start_hour = fields.Integer('Start Hour (24h)', required=True)
+    end_hour = fields.Integer('End Hour (24h)', required=True)
+
+
 class VanguardBooking(models.Model):
     _name = 'vanguard.booking'
     _description = 'Sport Facility Booking'
