@@ -7,3 +7,4 @@ access_vanguard_customer_subscription,vanguard.customer.subscription,model_vangu
 access_vanguard_booking,vanguard.booking,model_vanguard_booking,,1,1,1,1
 access_vanguard_tutor,vanguard.tutor,model_vanguard_tutor,,1,1,1,1
 access_vanguard_coaching_class,vanguard.coaching.class,model_vanguard_coaching_class,,1,1,1,1
+access_vanguard_tutor_plan,vanguard.tutor.plan,model_vanguard_tutor_plan,,1,1,1,1
