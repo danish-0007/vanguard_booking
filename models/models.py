@@ -182,6 +182,7 @@ class VanguardFacility(models.Model):
     company_registration_no = fields.Char('Business Registration Number (GSTIN/MSME/PAN)')
 
     sport_asset_ids = fields.One2many('vanguard.sport.asset', 'facility_id', string='Sport Assets')
+    hourly_price_ids = fields.One2many('vanguard.hourly.price', 'facility_id', string='Hourly Pricing Rules')
     booking_ids = fields.One2many('vanguard.booking', 'facility_id', string='Bookings')
     customer_ids = fields.One2many('vanguard.customer', 'facility_id', string='Customers')
     plan_ids = fields.One2many('vanguard.subscription.plan', 'facility_id', string='Subscription Plans')
@@ -251,6 +252,26 @@ class VanguardSportAsset(models.Model):
     close_time = fields.Float('Closes At (24h)', default=22.0)
     price_per_hour         = fields.Float('Walk-in Price/Hour (₹)', default=500.0)
     court_rate_per_month   = fields.Float('Tutor Court Rate/Month (₹)', default=0.0)
+
+
+class VanguardHourlyPrice(models.Model):
+    _name = 'vanguard.hourly.price'
+    _description = 'Hourly Pricing Rule'
+    _order = 'sport_type, start_hour asc'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    sport_type = fields.Selection(SPORT_TYPES, string='Sport Type', required=True)
+    start_hour = fields.Float('Start Hour (24h)', required=True)
+    end_hour = fields.Float('End Hour (24h)', required=True)
+    price = fields.Float('Price/Hour (₹)', required=True)
+
+    @api.constrains('start_hour', 'end_hour')
+    def _check_hours(self):
+        for rec in self:
+            if rec.start_hour >= rec.end_hour:
+                raise models.ValidationError('Start hour must be earlier than end hour.')
+            if not (0.0 <= rec.start_hour <= 23.99 and 0.0 <= rec.end_hour <= 24.0):
+                raise models.ValidationError('Hours must be in range 0.0 to 24.0.')
 
 
 class VanguardSubscriptionPlan(models.Model):
@@ -338,10 +359,11 @@ class VanguardCustomer(models.Model):
     is_expired = fields.Boolean(compute='_compute_active_sub', store=False)
 
     @api.depends('subscription_ids', 'subscription_ids.state', 'subscription_ids.plan_id',
-                 'subscription_ids.tutor_plan_id', 'subscription_ids.coaching_level')
+                 'subscription_ids.tutor_plan_id', 'subscription_ids.coaching_level', 'subscription_ids.end_date')
     def _compute_active_sub(self):
+        today = fields.Date.today()
         for rec in self:
-            active = rec.subscription_ids.filtered(lambda s: s.state == 'active')
+            active = rec.subscription_ids.filtered(lambda s: s.state == 'active' and (not s.end_date or s.end_date >= today))
             if active:
                 sub = active[0]
                 rec.active_plan_name = sub.display_label
@@ -385,6 +407,42 @@ class VanguardCustomerSubscription(models.Model):
     preferred_hour = fields.Integer('Preferred Hour (24h)')
 
     display_label = fields.Char(compute='_compute_display_label', store=False)
+
+    @api.constrains('preferred_court', 'preferred_hour', 'preferred_sport', 'state')
+    def _check_preferred_slot(self):
+        for rec in self:
+            if rec.state != 'active' or rec.booking_recurrence not in ['daily', 'permanent']:
+                continue
+            if not rec.preferred_court or not rec.preferred_hour:
+                continue
+            
+            # Check overlap with coaching classes
+            classes = self.env['vanguard.coaching.class'].search([
+                ('facility_id', '=', rec.customer_id.facility_id.id),
+                ('sport_type', '=', rec.preferred_sport),
+                ('court_number', '=', rec.preferred_court),
+                ('start_hour', '<=', rec.preferred_hour),
+                ('end_hour', '>', rec.preferred_hour),
+            ])
+            if classes:
+                raise models.ValidationError(
+                    f"Preferred court {rec.preferred_court} at {rec.preferred_hour}:00 is reserved for Coaching Class '{classes[0].name}'."
+                )
+            
+            # Check overlap with other active permanent subscriptions
+            other_subs = self.search([
+                ('id', '!=', rec.id),
+                ('customer_id.facility_id', '=', rec.customer_id.facility_id.id),
+                ('preferred_sport', '=', rec.preferred_sport),
+                ('preferred_court', '=', rec.preferred_court),
+                ('preferred_hour', '=', rec.preferred_hour),
+                ('state', '=', 'active'),
+                ('booking_recurrence', 'in', ['daily', 'permanent']),
+            ])
+            if other_subs:
+                raise models.ValidationError(
+                    f"Preferred court {rec.preferred_court} at {rec.preferred_hour}:00 is already reserved by {other_subs[0].customer_id.name}."
+                )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -540,6 +598,103 @@ class VanguardBooking(models.Model):
     subscription_id = fields.Many2one('vanguard.customer.subscription', string='Subscription')
     notes = fields.Text()
 
+    @api.constrains('facility_id', 'sport_type', 'court_number', 'booking_date', 'start_time', 'end_time', 'state')
+    def _check_booking_overlap(self):
+        for rec in self:
+            if rec.state == 'cancelled':
+                continue
+            # 1. Overlap with other bookings
+            overlap_bookings = self.search([
+                ('id', '!=', rec.id),
+                ('facility_id', '=', rec.facility_id.id),
+                ('sport_type', '=', rec.sport_type),
+                ('court_number', '=', rec.court_number),
+                ('booking_date', '=', rec.booking_date),
+                ('state', '!=', 'cancelled'),
+                ('start_time', '<', rec.end_time),
+                ('end_time', '>', rec.start_time),
+            ])
+            if overlap_bookings:
+                raise models.ValidationError(
+                    f"Court {rec.court_number} is already booked for this time block (overlap with {overlap_bookings[0].athlete_name})."
+                )
+            
+            # 2. Overlap with coaching classes (vanguard.coaching.class)
+            classes = self.env['vanguard.coaching.class'].search([
+                ('facility_id', '=', rec.facility_id.id),
+                ('sport_type', '=', rec.sport_type),
+                ('court_number', '=', rec.court_number),
+                ('start_hour', '<', rec.end_time),
+                ('end_hour', '>', rec.start_time),
+            ])
+            if classes:
+                raise models.ValidationError(
+                    f"Court {rec.court_number} is reserved for Coaching Class '{classes[0].name}' during this time."
+                )
+
+    def _calculate_booking_price(self, facility_id, sport_type, start_time, end_time):
+        """
+        Calculate total price based on hourly pricing rules.
+        If booking spans multiple rules, it calculates proportional cost for each hour/fraction.
+        If no rules match a time slot, falls back to the default price_per_hour on sport.asset.
+        """
+        if not facility_id or not sport_type or start_time is None or end_time is None:
+            return 0.0
+        
+        # Get rules sorted by start_hour
+        rules = self.env['vanguard.hourly.price'].search([
+            ('facility_id', '=', facility_id),
+            ('sport_type', '=', sport_type)
+        ], order='start_hour asc')
+
+        # Get fallback price from asset
+        asset = self.env['vanguard.sport.asset'].search([
+            ('facility_id', '=', facility_id),
+            ('sport_type', '=', sport_type),
+        ], limit=1)
+        fallback_rate = asset.price_per_hour if asset else 0.0
+
+        total_price = 0.0
+        current_time = start_time
+        
+        while current_time < end_time:
+            # Find rule covering current_time
+            matching_rule = False
+            for rule in rules:
+                if rule.start_hour <= current_time < rule.end_hour:
+                    matching_rule = rule
+                    break
+            
+            if matching_rule:
+                # Calculate how much of this rule's block we consume
+                segment_end = min(end_time, matching_rule.end_hour)
+                duration = segment_end - current_time
+                total_price += duration * matching_rule.price
+                current_time = segment_end
+            else:
+                # No rule matches. Use fallback_rate until next rule start or end_time
+                next_rule_start = end_time
+                for rule in rules:
+                    if rule.start_hour > current_time:
+                        next_rule_start = min(next_rule_start, rule.start_hour)
+                
+                duration = next_rule_start - current_time
+                total_price += duration * fallback_rate
+                current_time = next_rule_start
+                
+        return total_price
+
+    @api.onchange('facility_id', 'sport_type', 'start_time', 'end_time', 'booking_type')
+    def _onchange_booking_details(self):
+        for rec in self:
+            if rec.booking_type != 'member':
+                rec.price = rec._calculate_booking_price(
+                    rec.facility_id.id,
+                    rec.sport_type,
+                    rec.start_time,
+                    rec.end_time
+                )
+
     @api.model
     def create(self, vals):
         if vals.get('name', 'New') == 'New':
@@ -548,10 +703,9 @@ class VanguardBooking(models.Model):
         # Enforce: N free (member) slots per day where N = number of active subscriptions
         if vals.get('booking_type') == 'member' and vals.get('customer_id'):
             today = fields.Date.today()
-            # Count free bookings already used today
+            # Count any bookings already used today (confirmed or draft)
             existing = self.search_count([
                 ('customer_id', '=', vals['customer_id']),
-                ('booking_type', '=', 'member'),
                 ('booking_date', '=', vals.get('booking_date', str(today))),
                 ('state', '!=', 'cancelled'),
             ])
@@ -565,15 +719,33 @@ class VanguardBooking(models.Model):
             # Downgrade to walk-in only when free quota is exhausted
             if active_sub_count == 0 or existing >= active_sub_count:
                 vals['booking_type'] = 'walk_in'
-                if not vals.get('price'):
-                    asset = self.env['vanguard.sport.asset'].search([
-                        ('facility_id', '=', vals.get('facility_id')),
-                        ('sport_type', '=', vals.get('sport_type')),
-                    ], limit=1)
-                    if asset:
-                        vals['price'] = asset.price_per_hour
+
+        # Calculate price if not provided, or is 0.0, and not a member booking
+        if vals.get('booking_type') != 'member' and not vals.get('price'):
+            vals['price'] = self._calculate_booking_price(
+                vals.get('facility_id'),
+                vals.get('sport_type'),
+                vals.get('start_time'),
+                vals.get('end_time')
+            )
 
         return super().create(vals)
+
+    def write(self, vals):
+        res = super().write(vals)
+        # Recalculate price if any relevant fields are changed and price is not explicitly set in vals
+        if any(field in vals for field in ['facility_id', 'sport_type', 'start_time', 'end_time', 'booking_type']) and 'price' not in vals:
+            for rec in self:
+                if rec.booking_type != 'member':
+                    rec.write({
+                        'price': rec._calculate_booking_price(
+                            rec.facility_id.id,
+                            rec.sport_type,
+                            rec.start_time,
+                            rec.end_time
+                        )
+                    })
+        return res
 
 
 

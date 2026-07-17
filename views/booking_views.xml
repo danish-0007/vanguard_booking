@@ -78,6 +78,16 @@
                         <page string="Sport Assets">
                             <field name="sport_asset_ids"><tree editable="bottom"><field name="sport_type"/><field name="count"/><field name="open_time" widget="float_time"/><field name="close_time" widget="float_time"/><field name="price_per_hour"/></tree></field>
                         </page>
+                        <page string="Hourly Pricing Rules">
+                            <field name="hourly_price_ids">
+                                <tree editable="bottom">
+                                    <field name="sport_type"/>
+                                    <field name="start_hour" widget="float_time"/>
+                                    <field name="end_hour" widget="float_time"/>
+                                    <field name="price"/>
+                                </tree>
+                            </field>
+                        </page>
                         <page string="Subscription Plans">
                             <field name="plan_ids"><tree><field name="name"/><field name="plan_type"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/></tree></field>
                         </page>
