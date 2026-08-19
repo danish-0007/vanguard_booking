@@ -42,11 +42,18 @@
                             <field name="phone"/>
                             <field name="email"/>
                         </group>
+                        <group string="Financial Breakdown">
+                            <field name="revenue_mtd" widget="monetary"/>
+                            <field name="booking_revenue_mtd" widget="monetary"/>
+                            <field name="subscription_revenue_mtd" widget="monetary"/>
+                            <field name="revenue_all_time" widget="monetary"/>
+                            <field name="booking_revenue_all_time" widget="monetary"/>
+                            <field name="subscription_revenue_all_time" widget="monetary"/>
+                        </group>
                         <group string="Stats">
                             <field name="total_assets"/>
                             <field name="total_customers"/>
                             <field name="total_bookings_today"/>
-                            <field name="revenue_mtd" widget="monetary"/>
                         </group>
                     </group>
                     <group string="Owner Credentials (App Login)">
@@ -78,10 +85,12 @@
                         <page string="Sport Assets">
                             <field name="sport_asset_ids"><tree editable="bottom"><field name="sport_type"/><field name="count"/><field name="open_time" widget="float_time"/><field name="close_time" widget="float_time"/><field name="price_per_hour"/></tree></field>
                         </page>
-                        <page string="Hourly Pricing Rules">
+                        <page string="Hourly Pricing Rules (Prime / Non-Prime)">
                             <field name="hourly_price_ids">
-                                <tree editable="bottom">
+                                <tree editable="bottom" decoration-warning="rate_type=='prime'" decoration-info="rate_type=='non_prime'">
                                     <field name="sport_type"/>
+                                    <field name="rate_type" widget="badge" decoration-warning="rate_type=='prime'" decoration-info="rate_type=='non_prime'"/>
+                                    <field name="days_type"/>
                                     <field name="start_hour" widget="float_time"/>
                                     <field name="end_hour" widget="float_time"/>
                                     <field name="price"/>
@@ -89,7 +98,7 @@
                             </field>
                         </page>
                         <page string="Subscription Plans">
-                            <field name="plan_ids"><tree><field name="name"/><field name="plan_type"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/></tree></field>
+                            <field name="plan_ids"><tree><field name="name"/><field name="plan_type"/><field name="timing_type" widget="badge" decoration-warning="timing_type=='prime'" decoration-info="timing_type=='non_prime'"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/></tree></field>
                         </page>
                         <page string="Customers">
                             <field name="customer_ids"><tree><field name="name"/><field name="phone"/><field name="customer_type"/><field name="sport_type"/><field name="active_plan_name"/></tree></field>
@@ -115,7 +124,7 @@
         <field name="name">vanguard.subscription.plan.tree</field>
         <field name="model">vanguard.subscription.plan</field>
         <field name="arch" type="xml">
-            <tree><field name="name"/><field name="facility_id"/><field name="plan_type"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/><field name="renewals"/></tree>
+            <tree><field name="name"/><field name="facility_id"/><field name="plan_type"/><field name="timing_type" widget="badge" decoration-warning="timing_type=='prime'" decoration-info="timing_type=='non_prime'"/><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield"/><field name="renewals"/></tree>
         </field>
     </record>
     <record id="view_plan_form" model="ir.ui.view">
@@ -126,7 +135,7 @@
                 <sheet>
                     <div class="oe_title"><h1><field name="name"/></h1></div>
                     <group>
-                        <group><field name="facility_id"/><field name="plan_type"/><field name="sport_type"/></group>
+                        <group><field name="facility_id"/><field name="plan_type"/><field name="timing_type"/><field name="sport_type"/></group>
                         <group><field name="duration_days"/><field name="price"/><field name="user_count"/><field name="gross_yield" widget="monetary"/></group>
                     </group>
                     <notebook>
@@ -147,8 +156,8 @@
         <field name="name">vanguard.customer.tree</field>
         <field name="model">vanguard.customer</field>
         <field name="arch" type="xml">
-            <tree decoration-success="customer_type=='member'" decoration-info="customer_type=='student'">
-                <field name="name"/><field name="phone"/><field name="facility_id"/><field name="customer_type"/><field name="sport_type"/><field name="active_plan_name"/><field name="active_plan_amount"/><field name="is_expired"/>
+            <tree decoration-success="approval_status=='approved'" decoration-warning="approval_status=='pending'" decoration-danger="approval_status=='rejected'">
+                <field name="name"/><field name="phone"/><field name="facility_id"/><field name="customer_type"/><field name="approval_status" widget="badge" decoration-success="approval_status=='approved'" decoration-warning="approval_status=='pending'" decoration-danger="approval_status=='rejected'"/><field name="sport_type"/><field name="active_plan_name"/><field name="active_plan_amount"/><field name="is_expired"/>
             </tree>
         </field>
     </record>
@@ -157,11 +166,17 @@
         <field name="model">vanguard.customer</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <button name="action_approve_customer" string="Approve Customer" type="object" class="oe_highlight" attrs="{'invisible': [('approval_status', '=', 'approved')]}"/>
+                    <button name="action_reject_customer" string="Reject" type="object" class="btn-danger" attrs="{'invisible': [('approval_status', '=', 'rejected')]}"/>
+                    <button name="action_reset_customer_pending" string="Reset to Pending" type="object" attrs="{'invisible': [('approval_status', '=', 'pending')]}"/>
+                    <field name="approval_status" widget="statusbar" statusbar_visible="pending,approved,rejected"/>
+                </header>
                 <sheet>
                     <div class="oe_title"><h1><field name="name"/></h1></div>
                     <group>
-                        <group><field name="phone"/><field name="facility_id"/><field name="customer_type"/><field name="sport_type"/></group>
-                        <group><!-- <field name="coaching_level" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/> --><field name="coach_assigned" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/><field name="court_assignment" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/><field name="tutor_id" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/></group>
+                        <group><field name="phone"/><field name="facility_id"/><field name="customer_type"/><field name="approval_status"/><field name="sport_type"/></group>
+                        <group><field name="rejection_reason" attrs="{'invisible': [('approval_status', '!=', 'rejected')]}"/><!-- <field name="coaching_level" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/> --><field name="coach_assigned" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/><field name="court_assignment" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/><field name="tutor_id" attrs="{'invisible': [('customer_type', '!=', 'student')]}"/></group>
                     </group>
                     <notebook>
                         <page string="Subscriptions">
@@ -186,7 +201,7 @@
         <field name="model">vanguard.booking</field>
         <field name="arch" type="xml">
             <tree decoration-info="state=='draft'" decoration-success="state=='confirmed'" decoration-danger="state=='cancelled'">
-                <field name="name"/><field name="facility_id"/><field name="athlete_name"/><field name="sport_type"/><field name="booking_type"/><field name="court_number"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/><field name="state"/>
+                <field name="name"/><field name="facility_id"/><field name="athlete_name"/><field name="sport_type"/><field name="booking_type"/><field name="court_number"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/><field name="state"/><field name="cancellation_reason" optional="show"/>
             </tree>
         </field>
     </record>
@@ -198,13 +213,18 @@
                 <header>
                     <button name="action_confirm" string="Confirm" type="object" class="oe_highlight" states="draft"/>
                     <button name="action_cancel" string="Cancel" type="object" states="draft,confirmed"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,confirmed"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,confirmed,cancelled"/>
                 </header>
                 <sheet>
                     <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
                     <group>
                         <group><field name="facility_id"/><field name="customer_id"/><field name="athlete_name"/><field name="phone"/><field name="booking_type"/></group>
                         <group><field name="sport_type"/><field name="sport_asset_id"/><field name="court_number"/><field name="booking_date"/><field name="start_time" widget="float_time"/><field name="end_time" widget="float_time"/><field name="price"/></group>
+                    </group>
+                    <group string="Cancellation Details" attrs="{'invisible': [('state', '!=', 'cancelled')]}">
+                        <field name="cancellation_reason"/>
+                        <field name="cancelled_by"/>
+                        <field name="cancel_date"/>
                     </group>
                     <group><field name="notes" colspan="2"/></group>
                 </sheet>

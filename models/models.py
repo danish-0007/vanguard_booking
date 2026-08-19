@@ -10,6 +10,12 @@ SPORT_TYPES = [
 PAYMENT_MODES = [
     ('cash', 'Cash'), ('upi', 'UPI'), ('card', 'Card'), ('bank_transfer', 'Bank Transfer'),
 ]
+RATE_TYPES = [
+    ('prime', 'Prime Time'), ('non_prime', 'Non-Prime Time'),
+]
+DAYS_TYPES = [
+    ('all', 'All Days'), ('weekday', 'Weekdays (Mon-Fri)'), ('weekend', 'Weekends (Sat-Sun)'),
+]
 
 
 class VanguardTutor(models.Model):
@@ -187,10 +193,16 @@ class VanguardFacility(models.Model):
     customer_ids = fields.One2many('vanguard.customer', 'facility_id', string='Customers')
     plan_ids = fields.One2many('vanguard.subscription.plan', 'facility_id', string='Subscription Plans')
     tutor_ids = fields.One2many('vanguard.tutor', 'facility_id', string='Tutors')
+    staff_ids = fields.One2many('vanguard.facility.staff', 'facility_id', string='Staff / Employees')
 
     total_bookings_today = fields.Integer(compute='_compute_stats', string='Bookings Today', store=False)
     total_customers = fields.Integer(compute='_compute_stats', string='Total Customers', store=False)
-    revenue_mtd = fields.Float(compute='_compute_stats', string='Revenue MTD', store=False)
+    revenue_mtd = fields.Float(compute='_compute_stats', string='Total Revenue MTD', store=False)
+    booking_revenue_mtd = fields.Float(compute='_compute_stats', string='Booking Revenue MTD', store=False)
+    subscription_revenue_mtd = fields.Float(compute='_compute_stats', string='Subscription Revenue MTD', store=False)
+    revenue_all_time = fields.Float(compute='_compute_stats', string='All Time Revenue', store=False)
+    booking_revenue_all_time = fields.Float(compute='_compute_stats', string='All Time Booking Revenue', store=False)
+    subscription_revenue_all_time = fields.Float(compute='_compute_stats', string='All Time Subscriptions Revenue', store=False)
     total_assets = fields.Integer(compute='_compute_total_assets', string='Total Assets', store=False)
 
     @api.depends('booking_ids', 'booking_ids.booking_date', 'booking_ids.price', 'booking_ids.state', 
@@ -203,18 +215,33 @@ class VanguardFacility(models.Model):
             rec.total_bookings_today = len(today_bookings)
             rec.total_customers = len(rec.customer_ids)
             
-            booking_rev = sum(rec.booking_ids.filtered(
-                lambda b: b.booking_date and b.booking_date.month == today.month
+            booking_rev_mtd = sum(rec.booking_ids.filtered(
+                lambda b: b.booking_date and b.booking_date.month == today.month and b.booking_date.year == today.year
                 and b.state == 'confirmed'
             ).mapped('price'))
 
-            subs = rec.customer_ids.subscription_ids.filtered(
-                lambda s: s.start_date and s.start_date.month == today.month
+            subs_mtd = rec.customer_ids.subscription_ids.filtered(
+                lambda s: s.start_date and s.start_date.month == today.month and s.start_date.year == today.year
                 and s.state in ['active', 'expired']
             )
-            sub_rev = sum(subs.mapped('amount_paid'))
+            sub_rev_mtd = sum(subs_mtd.mapped('amount_paid'))
 
-            rec.revenue_mtd = booking_rev + sub_rev
+            rec.booking_revenue_mtd = booking_rev_mtd
+            rec.subscription_revenue_mtd = sub_rev_mtd
+            rec.revenue_mtd = booking_rev_mtd + sub_rev_mtd
+
+            # All time aggregations
+            booking_rev_all = sum(rec.booking_ids.filtered(
+                lambda b: b.state == 'confirmed'
+            ).mapped('price'))
+            subs_all = rec.customer_ids.subscription_ids.filtered(
+                lambda s: s.state in ['active', 'expired']
+            )
+            sub_rev_all = sum(subs_all.mapped('amount_paid'))
+
+            rec.booking_revenue_all_time = booking_rev_all
+            rec.subscription_revenue_all_time = sub_rev_all
+            rec.revenue_all_time = booking_rev_all + sub_rev_all
 
     @api.model
     def authenticate_owner(self, email, password):
@@ -240,6 +267,22 @@ class VanguardFacility(models.Model):
             rec.state = 'rejected'
 
 
+class VanguardFacilityStaff(models.Model):
+    _name = 'vanguard.facility.staff'
+    _description = 'Facility Staff / Employee'
+    _order = 'name'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    name = fields.Char('Employee Name', required=True)
+    phone = fields.Char('Phone Number', required=True, index=True)
+    role = fields.Selection([
+        ('staff', 'Staff / Employee'),
+        ('manager', 'Manager'),
+    ], default='staff', required=True)
+    can_view_finances = fields.Boolean('Can View Finances', default=False)
+    is_active = fields.Boolean('Active', default=True)
+
+
 
 class VanguardSportAsset(models.Model):
     _name = 'vanguard.sport.asset'
@@ -261,17 +304,49 @@ class VanguardHourlyPrice(models.Model):
 
     facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
     sport_type = fields.Selection(SPORT_TYPES, string='Sport Type', required=True)
+    rate_type = fields.Selection(RATE_TYPES, string='Time Type', default='prime', required=True)
+    days_type = fields.Selection(DAYS_TYPES, string='Days Applicable', default='all', required=True)
     start_hour = fields.Float('Start Hour (24h)', required=True)
     end_hour = fields.Float('End Hour (24h)', required=True)
     price = fields.Float('Price/Hour (₹)', required=True)
+    name = fields.Char('Rule Name', compute='_compute_name', store=True)
 
-    @api.constrains('start_hour', 'end_hour')
-    def _check_hours(self):
+    @api.depends('sport_type', 'rate_type', 'start_hour', 'end_hour', 'price')
+    def _compute_name(self):
+        type_labels = dict(RATE_TYPES)
+        for rec in self:
+            label = type_labels.get(rec.rate_type, 'Rule')
+            sport_label = rec.sport_type.capitalize() if rec.sport_type else ''
+            rec.name = f"{sport_label} {label} ({rec.start_hour:04.1f}-{rec.end_hour:04.1f}) · ₹{rec.price:.0f}/hr"
+
+    @api.constrains('facility_id', 'sport_type', 'start_hour', 'end_hour', 'days_type', 'rate_type')
+    def _check_time_collision(self):
+        type_labels = dict(RATE_TYPES)
         for rec in self:
             if rec.start_hour >= rec.end_hour:
-                raise models.ValidationError('Start hour must be earlier than end hour.')
+                raise models.ValidationError('Start hour must be strictly earlier than end hour.')
             if not (0.0 <= rec.start_hour <= 23.99 and 0.0 <= rec.end_hour <= 24.0):
                 raise models.ValidationError('Hours must be in range 0.0 to 24.0.')
+
+            # Check collision with other rules for the same sport & facility
+            domain = [
+                ('id', '!=', rec.id),
+                ('facility_id', '=', rec.facility_id.id),
+                ('sport_type', '=', rec.sport_type),
+                ('start_hour', '<', rec.end_hour),
+                ('end_hour', '>', rec.start_hour),
+            ]
+            overlaps = self.search(domain)
+            for other in overlaps:
+                # Collision occurs if days overlap
+                if rec.days_type == 'all' or other.days_type == 'all' or rec.days_type == other.days_type:
+                    rec_label = type_labels.get(rec.rate_type, 'Rule')
+                    other_label = type_labels.get(other.rate_type, 'Rule')
+                    raise models.ValidationError(
+                        f"Timing Collision Detected for {rec.sport_type.capitalize()}: "
+                        f"{rec_label} ({rec.start_hour:04.1f} to {rec.end_hour:04.1f}) overlaps with existing "
+                        f"{other_label} ({other.start_hour:04.1f} to {other.end_hour:04.1f} @ ₹{other.price:.0f}/hr)."
+                    )
 
 
 class VanguardSubscriptionPlan(models.Model):
@@ -282,6 +357,10 @@ class VanguardSubscriptionPlan(models.Model):
     name = fields.Char('Plan Name', required=True)
     facility_id = fields.Many2one('vanguard.facility', required=True)
     plan_type = fields.Selection([('member', 'Member'), ('student', 'Student')], default='member', required=True)
+    timing_type = fields.Selection([
+        ('prime', 'Prime Time (All Access)'),
+        ('non_prime', 'Non-Prime Time Only'),
+    ], string='Timing Access', default='prime', required=True)
     sport_type = fields.Char('Sport Type(s)', default='all')
     duration_days = fields.Integer('Duration (Days)', default=30)
     price = fields.Float('Price (₹)', default=0.0)
@@ -311,10 +390,29 @@ class VanguardCustomer(models.Model):
     email = fields.Char('Email')
     facility_id = fields.Many2one('vanguard.facility', ondelete='set null')
 
+    approval_status = fields.Selection([
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ], string='Approval Status', default='pending', tracking=True, required=True)
+    rejection_reason = fields.Text('Rejection Reason')
+
     customer_type = fields.Selection([
         ('member', 'Member'), ('student', 'Student'), ('both', 'Member & Student'), ('walk_in', 'Walk-in'),
     ], required=True, default='member', tracking=True)
     sport_type = fields.Selection(SPORT_TYPES, string='Primary Sport')
+
+    def action_approve_customer(self):
+        for rec in self:
+            rec.approval_status = 'approved'
+
+    def action_reject_customer(self):
+        for rec in self:
+            rec.approval_status = 'rejected'
+
+    def action_reset_customer_pending(self):
+        for rec in self:
+            rec.approval_status = 'pending'
 
     def _update_customer_type(self):
         for rec in self:
@@ -383,6 +481,10 @@ class VanguardCustomerSubscription(models.Model):
     customer_id = fields.Many2one('vanguard.customer', required=True, ondelete='cascade')
     plan_id = fields.Many2one('vanguard.subscription.plan', string='Plan')
     tutor_plan_id = fields.Many2one('vanguard.tutor.plan', string='Tutor Plan', ondelete='set null')
+    timing_type = fields.Selection([
+        ('prime', 'Prime Time (All Access)'),
+        ('non_prime', 'Non-Prime Time Only'),
+    ], string='Timing Access', default='prime', required=True)
     coaching_level = fields.Selection([
         ('beginner', 'Beginner'), ('intermediate', 'Intermediate'), ('advanced', 'Advanced'),
     ], string='Coaching Level')
@@ -396,6 +498,10 @@ class VanguardCustomerSubscription(models.Model):
         ('active', 'Active'), ('expired', 'Expired'), ('cancelled', 'Cancelled'),
     ], default='active', tracking=True)
     is_renewal = fields.Boolean('Is Renewal', default=False)
+    cancel_date = fields.Date('Cancellation Date')
+    refund_amount = fields.Float('Refund Amount (₹)', default=0.0)
+    cancellation_reason = fields.Char('Cancellation Reason')
+    days_used = fields.Integer('Days Used', default=0)
 
     # Permanent / auto-booking recurrence details
     booking_recurrence = fields.Selection([
@@ -408,14 +514,32 @@ class VanguardCustomerSubscription(models.Model):
 
     display_label = fields.Char(compute='_compute_display_label', store=False)
 
-    @api.constrains('preferred_court', 'preferred_hour', 'preferred_sport', 'state')
+    @api.constrains('preferred_court', 'preferred_hour', 'preferred_sport', 'state', 'timing_type', 'plan_id', 'tutor_plan_id', 'end_date')
     def _check_preferred_slot(self):
+        today = fields.Date.today()
         for rec in self:
+            if rec.end_date and rec.end_date < today:
+                continue
             if rec.state != 'active' or rec.booking_recurrence not in ['daily', 'permanent']:
                 continue
             if not rec.preferred_court or not rec.preferred_hour:
                 continue
-            
+
+            # Check Non-Prime restriction
+            is_non_prime = rec.timing_type == 'non_prime' or (rec.plan_id and rec.plan_id.timing_type == 'non_prime')
+            if is_non_prime:
+                prime_rules = self.env['vanguard.hourly.price'].search([
+                    ('facility_id', '=', rec.customer_id.facility_id.id),
+                    ('sport_type', '=', rec.preferred_sport),
+                    ('rate_type', '=', 'prime'),
+                    ('start_hour', '<=', rec.preferred_hour),
+                    ('end_hour', '>', rec.preferred_hour),
+                ])
+                if prime_rules:
+                    raise models.ValidationError(
+                        f"Non-Prime subscription does not allow booking Prime Time slots ({rec.preferred_hour}:00 is in Prime Time for {rec.preferred_sport.capitalize()})."
+                    )
+
             # Check overlap with coaching classes
             classes = self.env['vanguard.coaching.class'].search([
                 ('facility_id', '=', rec.customer_id.facility_id.id),
@@ -424,6 +548,16 @@ class VanguardCustomerSubscription(models.Model):
                 ('start_hour', '<=', rec.preferred_hour),
                 ('end_hour', '>', rec.preferred_hour),
             ])
+            # If this subscription is for coaching, the coach's classes on this court/time are NOT collisions for the coach's students!
+            if rec.tutor_plan_id:
+                t_id = rec.tutor_plan_id.tutor_id.id
+                t_name = (rec.tutor_plan_id.tutor_id.name or '').strip().upper()
+                classes = classes.filtered(lambda c: c.tutor_id.id != t_id and t_name not in (c.name or '').upper() and c.id != rec.tutor_plan_id.coaching_class_id.id)
+            elif rec.customer_id and rec.customer_id.tutor_id:
+                t_id = rec.customer_id.tutor_id.id
+                t_name = (rec.customer_id.tutor_id.name or '').strip().upper()
+                classes = classes.filtered(lambda c: c.tutor_id.id != t_id and t_name not in (c.name or '').upper())
+
             if classes:
                 raise models.ValidationError(
                     f"Preferred court {rec.preferred_court} at {rec.preferred_hour}:00 is reserved for Coaching Class '{classes[0].name}'."
@@ -437,12 +571,33 @@ class VanguardCustomerSubscription(models.Model):
                 ('preferred_court', '=', rec.preferred_court),
                 ('preferred_hour', '=', rec.preferred_hour),
                 ('state', '=', 'active'),
+                '|', ('end_date', '=', False), ('end_date', '>=', today),
                 ('booking_recurrence', 'in', ['daily', 'permanent']),
             ])
-            if other_subs:
-                raise models.ValidationError(
-                    f"Preferred court {rec.preferred_court} at {rec.preferred_hour}:00 is already reserved by {other_subs[0].customer_id.name}."
-                )
+            if rec.tutor_plan_id or (rec.customer_id and rec.customer_id.tutor_id):
+                # Non-coaching member subscriptions on this slot are conflicts
+                conflicts = other_subs.filtered(lambda s: not s.tutor_plan_id and not (s.customer_id and s.customer_id.tutor_id))
+                if conflicts:
+                    raise models.ValidationError(
+                        f"Preferred court {rec.preferred_court} at {rec.preferred_hour}:00 is already reserved by {conflicts[0].customer_id.name}."
+                    )
+            else:
+                if other_subs:
+                    raise models.ValidationError(
+                        f"Preferred court {rec.preferred_court} at {rec.preferred_hour}:00 is already reserved by {other_subs[0].customer_id.name}."
+                    )
+
+    @api.model
+    def _auto_expire_past_subscriptions(self):
+        today = fields.Date.today()
+        expired = self.search([
+            ('state', '=', 'active'),
+            ('end_date', '<', today),
+        ])
+        if expired:
+            expired.write({'state': 'expired'})
+            for cust in expired.mapped('customer_id'):
+                cust._update_customer_type()
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -490,6 +645,21 @@ class VanguardCustomerSubscription(models.Model):
                 rec.display_label = f'Coaching · {tier} ({coach})'.strip()
             else:
                 rec.display_label = 'Plan'
+
+    def action_cancel_subscription(self, refund_amount=0.0, reason=False, days_used=0):
+        """Cancel subscription with refund details and update customer type."""
+        today = fields.Date.today()
+        for rec in self:
+            rec.write({
+                'state': 'cancelled',
+                'cancel_date': today,
+                'refund_amount': float(refund_amount or 0.0),
+                'cancellation_reason': reason or 'Cancelled by owner',
+                'days_used': int(days_used or 0),
+            })
+            if rec.customer_id:
+                rec.customer_id._update_customer_type()
+        return True
 
     @api.model
     def enroll_tutor_plan(self, facility_id, tutor_plan_id, phone, name,
@@ -596,6 +766,9 @@ class VanguardBooking(models.Model):
         ('draft', 'Pending'), ('confirmed', 'Confirmed'), ('cancelled', 'Cancelled'),
     ], default='confirmed', tracking=True)
     subscription_id = fields.Many2one('vanguard.customer.subscription', string='Subscription')
+    cancellation_reason = fields.Text('Cancellation Remarks / Reason')
+    cancelled_by = fields.Char('Cancelled By')
+    cancel_date = fields.Date('Cancellation Date')
     notes = fields.Text()
 
     @api.constrains('facility_id', 'sport_type', 'court_number', 'booking_date', 'start_time', 'end_time', 'state')
@@ -620,17 +793,19 @@ class VanguardBooking(models.Model):
                 )
             
             # 2. Overlap with coaching classes (vanguard.coaching.class)
-            classes = self.env['vanguard.coaching.class'].search([
-                ('facility_id', '=', rec.facility_id.id),
-                ('sport_type', '=', rec.sport_type),
-                ('court_number', '=', rec.court_number),
-                ('start_hour', '<', rec.end_time),
-                ('end_hour', '>', rec.start_time),
-            ])
-            if classes:
-                raise models.ValidationError(
-                    f"Court {rec.court_number} is reserved for Coaching Class '{classes[0].name}' during this time."
-                )
+            # Coaching classes block general walk-in and member bookings from taking coaching time
+            if rec.booking_type != 'student':
+                classes = self.env['vanguard.coaching.class'].search([
+                    ('facility_id', '=', rec.facility_id.id),
+                    ('sport_type', '=', rec.sport_type),
+                    ('court_number', '=', rec.court_number),
+                    ('start_hour', '<', rec.end_time),
+                    ('end_hour', '>', rec.start_time),
+                ])
+                if classes:
+                    raise models.ValidationError(
+                        f"Court {rec.court_number} is reserved for Coaching Class '{classes[0].name}' during this time."
+                    )
 
     def _calculate_booking_price(self, facility_id, sport_type, start_time, end_time):
         """
@@ -755,6 +930,17 @@ class VanguardBooking(models.Model):
 
     def action_cancel(self):
         self.state = 'cancelled'
+
+    def action_cancel_booking(self, reason=False, cancelled_by=False):
+        today = fields.Date.today()
+        for rec in self:
+            rec.write({
+                'state': 'cancelled',
+                'cancellation_reason': reason or 'Cancelled by owner',
+                'cancelled_by': cancelled_by or 'Owner',
+                'cancel_date': today,
+            })
+        return True
 
     @api.model
     def get_slots_for_date(self, facility_id, sport_type, date_str):

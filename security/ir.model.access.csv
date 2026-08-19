@@ -9,3 +9,4 @@ access_vanguard_tutor,vanguard.tutor,model_vanguard_tutor,,1,1,1,1
 access_vanguard_coaching_class,vanguard.coaching.class,model_vanguard_coaching_class,,1,1,1,1
 access_vanguard_tutor_plan,vanguard.tutor.plan,model_vanguard_tutor_plan,,1,1,1,1
 access_vanguard_hourly_price,vanguard.hourly.price,model_vanguard_hourly_price,,1,1,1,1
+access_vanguard_facility_staff,vanguard.facility.staff,model_vanguard_facility_staff,,1,1,1,1
