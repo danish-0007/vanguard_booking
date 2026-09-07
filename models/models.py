@@ -194,6 +194,9 @@ class VanguardFacility(models.Model):
     plan_ids = fields.One2many('vanguard.subscription.plan', 'facility_id', string='Subscription Plans')
     tutor_ids = fields.One2many('vanguard.tutor', 'facility_id', string='Tutors')
     staff_ids = fields.One2many('vanguard.facility.staff', 'facility_id', string='Staff / Employees')
+    product_ids = fields.One2many('vanguard.product', 'facility_id', string='Products')
+    sale_ids = fields.One2many('vanguard.sale', 'facility_id', string='Sales')
+    expense_ids = fields.One2many('vanguard.expense', 'facility_id', string='Expenses')
 
     total_bookings_today = fields.Integer(compute='_compute_stats', string='Bookings Today', store=False)
     total_customers = fields.Integer(compute='_compute_stats', string='Total Customers', store=False)
@@ -959,3 +962,152 @@ class VanguardBooking(models.Model):
             'booking_type': b.booking_type,
             'state': b.state,
         } for b in bookings]
+
+
+# ==========================================
+# INVENTORY, POS & FACILITY EXPENSES
+# ==========================================
+
+PRODUCT_CATEGORIES = [
+    ('beverage', 'Beverage / Drinks'),
+    ('snacks', 'Snacks / Food'),
+    ('gear', 'Sports Gear / Grip / Ball'),
+    ('misc', 'Miscellaneous'),
+]
+
+EXPENSE_CATEGORIES = [
+    ('electricity', 'Electricity Bill'),
+    ('water', 'Water Bill'),
+    ('maintenance', 'Facility Maintenance & Repair'),
+    ('rent', 'Turf / Land Rent'),
+    ('salary', 'Staff & Coach Salary'),
+    ('equipment', 'Sports Equipment'),
+    ('other', 'Other Expenses'),
+]
+
+
+class VanguardProduct(models.Model):
+    _name = 'vanguard.product'
+    _description = 'Facility Inventory Product'
+    _order = 'name asc'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    name = fields.Char('Product Name', required=True)
+    category = fields.Selection(PRODUCT_CATEGORIES, default='snacks', required=True)
+    cost_price = fields.Float('Cost Price (₹)', default=0.0)
+    sale_price = fields.Float('Selling Price (₹)', required=True, default=0.0)
+    stock_qty = fields.Integer('Current Stock Quantity', default=0)
+    min_stock_alert = fields.Integer('Low Stock Alert Threshold', default=5)
+    is_active = fields.Boolean('Active', default=True)
+
+    purchase_ids = fields.One2many('vanguard.inventory.purchase', 'product_id', string='Restock History')
+    sale_line_ids = fields.One2many('vanguard.sale.line', 'product_id', string='Sales History')
+
+
+class VanguardInventoryPurchase(models.Model):
+    _name = 'vanguard.inventory.purchase'
+    _description = 'Inventory Restock / Purchase Log'
+    _order = 'purchase_date desc, id desc'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    product_id = fields.Many2one('vanguard.product', required=True, ondelete='cascade')
+    quantity = fields.Integer('Quantity Added', required=True, default=1)
+    unit_cost = fields.Float('Unit Cost Price (₹)', default=0.0)
+    total_cost = fields.Float('Total Cost (₹)', compute='_compute_total_cost', store=True)
+    purchase_date = fields.Date('Purchase Date', default=fields.Date.today, required=True)
+    supplier_name = fields.Char('Supplier / Shop Name')
+    notes = fields.Text('Notes')
+
+    @api.depends('quantity', 'unit_cost')
+    def _compute_total_cost(self):
+        for rec in self:
+            rec.total_cost = rec.quantity * rec.unit_cost
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        records = super().create(vals_list)
+        for rec in records:
+            if rec.product_id and rec.quantity > 0:
+                rec.product_id.stock_qty += rec.quantity
+                if rec.unit_cost > 0:
+                    rec.product_id.cost_price = rec.unit_cost
+        return records
+
+
+class VanguardSale(models.Model):
+    _name = 'vanguard.sale'
+    _description = 'Facility Counter POS Sale'
+    _order = 'sale_date desc, id desc'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    name = fields.Char('Sale Ref', required=True, copy=False, default='New')
+    customer_name = fields.Char('Customer Name', required=True, default='Counter Walk-in')
+    customer_phone = fields.Char('Customer Phone')
+    sale_date = fields.Datetime('Sale Date', default=fields.Datetime.now, required=True)
+    payment_mode = fields.Selection(PAYMENT_MODES, default='cash', required=True)
+    state = fields.Selection([
+        ('draft', 'Draft'),
+        ('done', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ], default='done', required=True)
+    line_ids = fields.One2many('vanguard.sale.line', 'sale_id', string='Sold Items')
+    total_amount = fields.Float('Total Sale Amount (₹)', compute='_compute_total', store=True)
+    notes = fields.Text('Notes')
+
+    @api.depends('line_ids.subtotal')
+    def _compute_total(self):
+        for rec in self:
+            rec.total_amount = sum(rec.line_ids.mapped('subtotal'))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name', 'New') == 'New':
+                vals['name'] = self.env['ir.sequence'].next_by_code('vanguard.sale') or f"POS-{fields.Date.today().strftime('%y%m%d')}-{self.search_count([]) + 1:04d}"
+        records = super().create(vals_list)
+        # Deduct stock if created directly in 'done' state
+        for rec in records:
+            if rec.state == 'done':
+                for line in rec.line_ids:
+                    line.product_id.stock_qty -= line.quantity
+        return records
+
+    def action_cancel_sale(self):
+        for rec in self:
+            if rec.state == 'done':
+                # Restore inventory
+                for line in rec.line_ids:
+                    line.product_id.stock_qty += line.quantity
+                rec.state = 'cancelled'
+        return True
+
+
+class VanguardSaleLine(models.Model):
+    _name = 'vanguard.sale.line'
+    _description = 'Counter POS Sale Item Line'
+
+    sale_id = fields.Many2one('vanguard.sale', required=True, ondelete='cascade')
+    product_id = fields.Many2one('vanguard.product', required=True, ondelete='restrict')
+    quantity = fields.Integer('Quantity', required=True, default=1)
+    unit_price = fields.Float('Unit Price (₹)', required=True, default=0.0)
+    subtotal = fields.Float('Subtotal (₹)', compute='_compute_subtotal', store=True)
+
+    @api.depends('quantity', 'unit_price')
+    def _compute_subtotal(self):
+        for rec in self:
+            rec.subtotal = rec.quantity * rec.unit_price
+
+
+class VanguardExpense(models.Model):
+    _name = 'vanguard.expense'
+    _description = 'Facility Operational Expense'
+    _order = 'expense_date desc, id desc'
+
+    facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
+    name = fields.Char('Expense Title', required=True)
+    category = fields.Selection(EXPENSE_CATEGORIES, default='electricity', required=True)
+    amount = fields.Float('Amount (₹)', required=True, default=0.0)
+    expense_date = fields.Date('Expense Date', default=fields.Date.today, required=True)
+    payment_mode = fields.Selection(PAYMENT_MODES, default='cash', required=True)
+    notes = fields.Text('Notes / Description')
+

@@ -313,6 +313,202 @@
         <field name="view_mode">tree,form</field>
     </record>
 
+    <!-- ─── INVENTORY / PRODUCTS ─────────────────────────────── -->
+    <record id="view_vanguard_product_tree" model="ir.ui.view">
+        <field name="name">vanguard.product.tree</field>
+        <field name="model">vanguard.product</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="facility_id"/>
+                <field name="category"/>
+                <field name="sale_price"/>
+                <field name="cost_price"/>
+                <field name="stock_qty" decoration-danger="stock_qty &lt;= min_stock_alert" decoration-success="stock_qty &gt; min_stock_alert"/>
+                <field name="min_stock_alert"/>
+                <field name="is_active"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_vanguard_product_form" model="ir.ui.view">
+        <field name="name">vanguard.product.form</field>
+        <field name="model">vanguard.product</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Product Name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="facility_id"/>
+                            <field name="category"/>
+                            <field name="is_active"/>
+                        </group>
+                        <group>
+                            <field name="sale_price"/>
+                            <field name="cost_price"/>
+                            <field name="stock_qty"/>
+                            <field name="min_stock_alert"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Restock History">
+                            <field name="purchase_ids">
+                                <tree>
+                                    <field name="purchase_date"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_cost"/>
+                                    <field name="total_cost"/>
+                                    <field name="supplier_name"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_vanguard_product" model="ir.actions.act_window">
+        <field name="name">Products / Inventory</field>
+        <field name="res_model">vanguard.product</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── RESTOCK PURCHASES ──────────────────────────────────── -->
+    <record id="view_vanguard_inventory_purchase_tree" model="ir.ui.view">
+        <field name="name">vanguard.inventory.purchase.tree</field>
+        <field name="model">vanguard.inventory.purchase</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="purchase_date"/>
+                <field name="facility_id"/>
+                <field name="product_id"/>
+                <field name="quantity"/>
+                <field name="unit_cost"/>
+                <field name="total_cost"/>
+                <field name="supplier_name"/>
+            </tree>
+        </field>
+    </record>
+    <record id="action_vanguard_inventory_purchase" model="ir.actions.act_window">
+        <field name="name">Restock Logs</field>
+        <field name="res_model">vanguard.inventory.purchase</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── POS SALES ─────────────────────────────────────────── -->
+    <record id="view_vanguard_sale_tree" model="ir.ui.view">
+        <field name="name">vanguard.sale.tree</field>
+        <field name="model">vanguard.sale</field>
+        <field name="arch" type="xml">
+            <tree decoration-muted="state=='cancelled'" decoration-success="state=='done'">
+                <field name="name"/>
+                <field name="sale_date"/>
+                <field name="facility_id"/>
+                <field name="customer_name"/>
+                <field name="customer_phone"/>
+                <field name="payment_mode"/>
+                <field name="total_amount"/>
+                <field name="state" widget="badge" decoration-success="state=='done'" decoration-danger="state=='cancelled'"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_vanguard_sale_form" model="ir.ui.view">
+        <field name="name">vanguard.sale.form</field>
+        <field name="model">vanguard.sale</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_cancel_sale" string="Cancel &amp; Restore Stock" type="object" attrs="{'invisible': [('state', '!=', 'done')]}"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,done,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="facility_id"/>
+                            <field name="customer_name"/>
+                            <field name="customer_phone"/>
+                        </group>
+                        <group>
+                            <field name="sale_date"/>
+                            <field name="payment_mode"/>
+                            <field name="total_amount"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Sale Items">
+                            <field name="line_ids">
+                                <tree editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_price"/>
+                                    <field name="subtotal"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_vanguard_sale" model="ir.actions.act_window">
+        <field name="name">Counter Sales (POS)</field>
+        <field name="res_model">vanguard.sale</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- ─── EXPENSES ──────────────────────────────────────────── -->
+    <record id="view_vanguard_expense_tree" model="ir.ui.view">
+        <field name="name">vanguard.expense.tree</field>
+        <field name="model">vanguard.expense</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="expense_date"/>
+                <field name="name"/>
+                <field name="facility_id"/>
+                <field name="category"/>
+                <field name="amount"/>
+                <field name="payment_mode"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_vanguard_expense_form" model="ir.ui.view">
+        <field name="name">vanguard.expense.form</field>
+        <field name="model">vanguard.expense</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Expense Title"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="facility_id"/>
+                            <field name="category"/>
+                            <field name="expense_date"/>
+                        </group>
+                        <group>
+                            <field name="amount"/>
+                            <field name="payment_mode"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="notes"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_vanguard_expense" model="ir.actions.act_window">
+        <field name="name">Facility Expenses</field>
+        <field name="res_model">vanguard.expense</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
     <!-- ─── MENUS ─────────────────────────────────────────────── -->
     <menuitem id="menu_root" name="Vanguard"/>
     <menuitem id="menu_facilities" name="Facilities" parent="menu_root" action="action_facility"/>
@@ -321,4 +517,7 @@
     <menuitem id="menu_plans" name="Subscription Plans" parent="menu_root" action="action_plan"/>
     <menuitem id="menu_tutors" name="Tutors" parent="menu_root" action="action_tutor"/>
     <menuitem id="menu_coaching_classes" name="Student Class Times" parent="menu_root" action="action_coaching_class"/>
+    <menuitem id="menu_inventory" name="Inventory" parent="menu_root" action="action_vanguard_product"/>
+    <menuitem id="menu_sales" name="Counter Sales" parent="menu_root" action="action_vanguard_sale"/>
+    <menuitem id="menu_expenses" name="Expenses" parent="menu_root" action="action_vanguard_expense"/>
 </odoo>

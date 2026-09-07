@@ -10,3 +10,8 @@ access_vanguard_coaching_class,vanguard.coaching.class,model_vanguard_coaching_c
 access_vanguard_tutor_plan,vanguard.tutor.plan,model_vanguard_tutor_plan,,1,1,1,1
 access_vanguard_hourly_price,vanguard.hourly.price,model_vanguard_hourly_price,,1,1,1,1
 access_vanguard_facility_staff,vanguard.facility.staff,model_vanguard_facility_staff,,1,1,1,1
+access_vanguard_product,vanguard.product,model_vanguard_product,,1,1,1,1
+access_vanguard_inventory_purchase,vanguard.inventory.purchase,model_vanguard_inventory_purchase,,1,1,1,1
+access_vanguard_sale,vanguard.sale,model_vanguard_sale,,1,1,1,1
+access_vanguard_sale_line,vanguard.sale.line,model_vanguard_sale_line,,1,1,1,1
+access_vanguard_expense,vanguard.expense,model_vanguard_expense,,1,1,1,1
