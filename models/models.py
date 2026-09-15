@@ -772,7 +772,20 @@ class VanguardBooking(models.Model):
     cancellation_reason = fields.Text('Cancellation Remarks / Reason')
     cancelled_by = fields.Char('Cancelled By')
     cancel_date = fields.Date('Cancellation Date')
+    rental_ids = fields.One2many('vanguard.rental', 'booking_id', string='Equipment Rentals')
+    rental_total = fields.Float('Equipment Rental Total (₹)', compute='_compute_rental_total', store=True)
+    total_payable = fields.Float('Total Payable (₹)', compute='_compute_total_payable', store=True)
     notes = fields.Text()
+
+    @api.depends('rental_ids.total_cost', 'rental_ids.state')
+    def _compute_rental_total(self):
+        for rec in self:
+            rec.rental_total = sum(rec.rental_ids.filtered(lambda r: r.state != 'cancelled').mapped('total_cost'))
+
+    @api.depends('price', 'rental_total')
+    def _compute_total_payable(self):
+        for rec in self:
+            rec.total_payable = (rec.price or 0.0) + (rec.rental_total or 0.0)
 
     @api.constrains('facility_id', 'sport_type', 'court_number', 'booking_date', 'start_time', 'end_time', 'state')
     def _check_booking_overlap(self):
@@ -994,14 +1007,32 @@ class VanguardProduct(models.Model):
     facility_id = fields.Many2one('vanguard.facility', required=True, ondelete='cascade')
     name = fields.Char('Product Name', required=True)
     category = fields.Selection(PRODUCT_CATEGORIES, default='snacks', required=True)
+    product_type = fields.Selection([
+        ('sale', 'Sale Only'),
+        ('rent', 'Rental Only'),
+        ('both', 'Sale & Rental'),
+    ], string='Item Type', default='sale', required=True)
     cost_price = fields.Float('Cost Price (₹)', default=0.0)
-    sale_price = fields.Float('Selling Price (₹)', required=True, default=0.0)
-    stock_qty = fields.Integer('Current Stock Quantity', default=0)
+    sale_price = fields.Float('Selling Price (₹)', default=0.0)
+    rental_price_per_hour = fields.Float('Rental Price / Hour (₹)', default=0.0)
+    stock_qty = fields.Integer('Total Stock Quantity', default=0)
     min_stock_alert = fields.Integer('Low Stock Alert Threshold', default=5)
     is_active = fields.Boolean('Active', default=True)
 
     purchase_ids = fields.One2many('vanguard.inventory.purchase', 'product_id', string='Restock History')
     sale_line_ids = fields.One2many('vanguard.sale.line', 'product_id', string='Sales History')
+    rental_ids = fields.One2many('vanguard.rental', 'product_id', string='Rental History')
+    currently_rented_qty = fields.Integer('Currently Rented', compute='_compute_currently_rented', store=False)
+    available_rent_qty = fields.Integer('Available to Rent', compute='_compute_currently_rented', store=False)
+
+    @api.depends('rental_ids.state', 'rental_ids.quantity', 'stock_qty')
+    def _compute_currently_rented(self):
+        for rec in self:
+            rented = sum(
+                rec.rental_ids.filtered(lambda r: r.state == 'active').mapped('quantity')
+            )
+            rec.currently_rented_qty = rented
+            rec.available_rent_qty = max(0, (rec.stock_qty or 0) - rented)
 
 
 class VanguardInventoryPurchase(models.Model):
@@ -1110,4 +1141,147 @@ class VanguardExpense(models.Model):
     expense_date = fields.Date('Expense Date', default=fields.Date.today, required=True)
     payment_mode = fields.Selection(PAYMENT_MODES, default='cash', required=True)
     notes = fields.Text('Notes / Description')
+
+
+class VanguardRental(models.Model):
+    _name = 'vanguard.rental'
+    _description = 'Equipment Rental Log'
+    _order = 'rent_date desc, start_time desc, id desc'
+
+    facility_id = fields.Many2one('vanguard.facility', string='Facility', required=True, ondelete='cascade')
+    product_id = fields.Many2one(
+        'vanguard.product',
+        string='Equipment / Product',
+        required=True,
+        domain="[('facility_id', '=', facility_id), ('product_type', 'in', ['rent', 'both'])]",
+        ondelete='restrict'
+    )
+    booking_id = fields.Many2one(
+        'vanguard.booking',
+        string='Court Booking',
+        domain="[('facility_id', '=', facility_id)]",
+        ondelete='set null'
+    )
+    customer_id = fields.Many2one(
+        'vanguard.customer',
+        string='Customer',
+        domain="[('facility_id', '=', facility_id)]",
+        ondelete='set null'
+    )
+    customer_name = fields.Char('Customer Name', required=True, default='Walk-in Player')
+    customer_phone = fields.Char('Phone Number')
+    rent_date = fields.Date('Rental Date', default=fields.Date.today, required=True)
+    start_time = fields.Float('Start Time', default=0.0)
+    end_time = fields.Float('End Time', default=1.0)
+    duration_hours = fields.Float('Duration (Hours)', compute='_compute_duration_and_cost', store=True, readonly=False)
+    quantity = fields.Integer('Quantity', required=True, default=1)
+    hourly_rate = fields.Float('Rate / Hour (₹)', required=True, default=0.0)
+    total_cost = fields.Float('Total Cost (₹)', compute='_compute_duration_and_cost', store=True)
+    payment_mode = fields.Selection(PAYMENT_MODES, default='cash', required=True)
+    state = fields.Selection([
+        ('draft', 'Draft'),
+        ('active', 'Rented Out'),
+        ('returned', 'Returned'),
+        ('cancelled', 'Cancelled')
+    ], string='Status', default='active', required=True)
+    notes = fields.Text('Notes / Condition')
+
+    @api.onchange('facility_id')
+    def _onchange_facility_id(self):
+        if self.facility_id:
+            if self.product_id and self.product_id.facility_id != self.facility_id:
+                self.product_id = False
+            if self.booking_id and self.booking_id.facility_id != self.facility_id:
+                self.booking_id = False
+            if self.customer_id and self.customer_id.facility_id != self.facility_id:
+                self.customer_id = False
+
+    @api.onchange('booking_id')
+    def _onchange_booking_id(self):
+        if self.booking_id:
+            self.facility_id = self.booking_id.facility_id
+            if self.booking_id.customer_id:
+                self.customer_id = self.booking_id.customer_id
+            self.customer_name = self.booking_id.athlete_name or (self.booking_id.customer_id.name if self.booking_id.customer_id else '')
+            self.customer_phone = self.booking_id.phone or (self.booking_id.customer_id.phone if self.booking_id.customer_id else '')
+            self.rent_date = self.booking_id.booking_date or fields.Date.today()
+            self.start_time = self.booking_id.start_time
+            self.end_time = self.booking_id.end_time
+
+    @api.onchange('customer_id')
+    def _onchange_customer_id(self):
+        if self.customer_id:
+            self.customer_name = self.customer_id.name
+            self.customer_phone = self.customer_id.phone
+
+    @api.onchange('product_id')
+    def _onchange_product_id(self):
+        if self.product_id:
+            self.hourly_rate = self.product_id.rental_price_per_hour
+
+    @api.depends('start_time', 'end_time', 'hourly_rate', 'quantity', 'duration_hours')
+    def _compute_duration_and_cost(self):
+        for rec in self:
+            # If duration is derived from start and end times
+            if rec.end_time > rec.start_time:
+                rec.duration_hours = round(rec.end_time - rec.start_time, 2)
+            elif not rec.duration_hours or rec.duration_hours <= 0:
+                rec.duration_hours = 1.0
+            rec.total_cost = rec.duration_hours * rec.hourly_rate * (rec.quantity or 1)
+
+    @api.constrains('product_id', 'quantity', 'state')
+    def _check_rental_quantity(self):
+        for rec in self:
+            if rec.product_id and rec.state == 'active':
+                active_others = self.search([
+                    ('product_id', '=', rec.product_id.id),
+                    ('state', '=', 'active'),
+                    ('id', '!=', rec.id)
+                ])
+                currently_rented = sum(active_others.mapped('quantity'))
+                if currently_rented + rec.quantity > rec.product_id.stock_qty:
+                    available = max(0, rec.product_id.stock_qty - currently_rented)
+                    raise exceptions.ValidationError(
+                        f"Cannot rent {rec.quantity} units of '{rec.product_id.name}'. "
+                        f"Only {available} available in stock ({currently_rented} currently rented out)."
+                    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            # Auto-fill hourly rate from product if not provided or 0
+            if ('hourly_rate' not in vals or not vals.get('hourly_rate')) and vals.get('product_id'):
+                product = self.env['vanguard.product'].browse(vals['product_id'])
+                vals['hourly_rate'] = product.rental_price_per_hour
+
+            # Auto-calculate duration if not provided
+            if 'duration_hours' not in vals or not vals.get('duration_hours'):
+                st = vals.get('start_time', 0.0)
+                et = vals.get('end_time', 0.0)
+                if et > st:
+                    vals['duration_hours'] = round(et - st, 2)
+                else:
+                    vals['duration_hours'] = 1.0
+
+            # Auto-compute total cost if not explicitly provided
+            if 'total_cost' not in vals:
+                dur = vals.get('duration_hours', 1.0)
+                rate = vals.get('hourly_rate', 0.0)
+                qty = vals.get('quantity', 1)
+                vals['total_cost'] = round(dur * rate * qty, 2)
+
+        return super().create(vals_list)
+
+    def action_rent_out(self):
+        for rec in self:
+            rec.state = 'active'
+
+    def action_mark_returned(self):
+        for rec in self:
+            rec.state = 'returned'
+
+    def action_cancel_rental(self):
+        for rec in self:
+            rec.state = 'cancelled'
+
 
