@@ -226,6 +226,29 @@
                         <field name="cancelled_by"/>
                         <field name="cancel_date"/>
                     </group>
+                    <notebook>
+                        <page string="Equipment Rentals">
+                            <field name="rental_ids" context="{'default_facility_id': facility_id}">
+                                <tree editable="bottom">
+                                    <field name="facility_id" invisible="1"/>
+                                    <field name="product_id"/>
+                                    <field name="quantity"/>
+                                    <field name="hourly_rate"/>
+                                    <field name="start_time" widget="float_time"/>
+                                    <field name="end_time" widget="float_time"/>
+                                    <field name="duration_hours"/>
+                                    <field name="total_cost"/>
+                                    <field name="payment_mode"/>
+                                    <field name="state" widget="badge" decoration-warning="state=='draft'" decoration-info="state=='active'" decoration-success="state=='returned'" decoration-danger="state=='cancelled'"/>
+                                </tree>
+                            </field>
+                            <group class="oe_subtotal_footer oe_right">
+                                <field name="price" string="Court Fee (₹)" readonly="1"/>
+                                <field name="rental_total" string="Equipment Rentals (₹)" readonly="1"/>
+                                <field name="total_payable" string="Grand Total (₹)" class="oe_subtotal_footer_separator"/>
+                            </group>
+                        </page>
+                    </notebook>
                     <group><field name="notes" colspan="2"/></group>
                 </sheet>
                 <div class="oe_chatter"><field name="message_follower_ids"/><field name="activity_ids"/><field name="message_ids"/></div>
@@ -322,10 +345,13 @@
                 <field name="name"/>
                 <field name="facility_id"/>
                 <field name="category"/>
-                <field name="sale_price"/>
+                <field name="product_type" widget="badge" decoration-info="product_type=='rent'" decoration-success="product_type=='sale'" decoration-warning="product_type=='both'"/>
+                <field name="sale_price" attrs="{'invisible': [('product_type', '=', 'rent')]}"/>
+                <field name="rental_price_per_hour" attrs="{'invisible': [('product_type', '=', 'sale')]}"/>
                 <field name="cost_price"/>
+                <field name="min_stock_alert" invisible="1"/>
                 <field name="stock_qty" decoration-danger="stock_qty &lt;= min_stock_alert" decoration-success="stock_qty &gt; min_stock_alert"/>
-                <field name="min_stock_alert"/>
+                <field name="currently_rented_qty"/>
                 <field name="is_active"/>
             </tree>
         </field>
@@ -343,17 +369,19 @@
                         <group>
                             <field name="facility_id"/>
                             <field name="category"/>
+                            <field name="product_type"/>
                             <field name="is_active"/>
                         </group>
                         <group>
-                            <field name="sale_price"/>
+                            <field name="sale_price" attrs="{'invisible': [('product_type', '=', 'rent')]}"/>
+                            <field name="rental_price_per_hour" attrs="{'invisible': [('product_type', '=', 'sale')]}"/>
                             <field name="cost_price"/>
                             <field name="stock_qty"/>
                             <field name="min_stock_alert"/>
                         </group>
                     </group>
                     <notebook>
-                        <page string="Restock History">
+                        <page string="Restock History" attrs="{'invisible': [('product_type', '=', 'rent')]}">
                             <field name="purchase_ids">
                                 <tree>
                                     <field name="purchase_date"/>
@@ -361,6 +389,21 @@
                                     <field name="unit_cost"/>
                                     <field name="total_cost"/>
                                     <field name="supplier_name"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Rental History" attrs="{'invisible': [('product_type', '=', 'sale')]}">
+                            <field name="rental_ids" readonly="1">
+                                <tree decoration-info="state=='active'" decoration-success="state=='returned'" decoration-muted="state=='cancelled'">
+                                    <field name="rent_date"/>
+                                    <field name="customer_name"/>
+                                    <field name="customer_phone"/>
+                                    <field name="booking_id"/>
+                                    <field name="quantity"/>
+                                    <field name="hourly_rate"/>
+                                    <field name="duration_hours"/>
+                                    <field name="total_cost"/>
+                                    <field name="state" widget="badge" decoration-warning="state=='draft'" decoration-info="state=='active'" decoration-success="state=='returned'" decoration-danger="state=='cancelled'"/>
                                 </tree>
                             </field>
                         </page>
@@ -509,6 +552,80 @@
         <field name="view_mode">tree,form</field>
     </record>
 
+    <!-- ─── EQUIPMENT RENTALS ──────────────────────────────────── -->
+    <record id="view_vanguard_rental_tree" model="ir.ui.view">
+        <field name="name">vanguard.rental.tree</field>
+        <field name="model">vanguard.rental</field>
+        <field name="arch" type="xml">
+            <tree decoration-info="state=='active'" decoration-success="state=='returned'" decoration-muted="state=='cancelled'">
+                <field name="rent_date"/>
+                <field name="facility_id"/>
+                <field name="product_id"/>
+                <field name="customer_name"/>
+                <field name="customer_phone"/>
+                <field name="booking_id"/>
+                <field name="quantity"/>
+                <field name="hourly_rate"/>
+                <field name="start_time" widget="float_time"/>
+                <field name="end_time" widget="float_time"/>
+                <field name="duration_hours"/>
+                <field name="total_cost"/>
+                <field name="payment_mode"/>
+                <field name="state" widget="badge" decoration-warning="state=='draft'" decoration-info="state=='active'" decoration-success="state=='returned'" decoration-danger="state=='cancelled'"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_vanguard_rental_form" model="ir.ui.view">
+        <field name="name">vanguard.rental.form</field>
+        <field name="model">vanguard.rental</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_rent_out" string="Rent Out Equipment" type="object" class="oe_highlight" attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+                    <button name="action_mark_returned" string="Mark as Returned" type="object" class="btn-success" attrs="{'invisible': [('state', '!=', 'active')]}"/>
+                    <button name="action_cancel_rental" string="Cancel Rental" type="object" attrs="{'invisible': [('state', 'in', ['returned', 'cancelled'])]}"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,active,returned"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="product_id" placeholder="Select Equipment / Racket"/></h1>
+                    </div>
+                    <group>
+                        <group string="Facility &amp; Booking Info">
+                            <field name="facility_id"/>
+                            <field name="booking_id"/>
+                            <field name="customer_id"/>
+                            <field name="customer_name"/>
+                            <field name="customer_phone"/>
+                        </group>
+                        <group string="Rental Time &amp; Duration">
+                            <field name="rent_date"/>
+                            <field name="start_time" widget="float_time"/>
+                            <field name="end_time" widget="float_time"/>
+                            <field name="duration_hours"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Pricing &amp; Cost">
+                            <field name="quantity"/>
+                            <field name="hourly_rate"/>
+                            <field name="total_cost"/>
+                        </group>
+                        <group string="Payment &amp; Details">
+                            <field name="payment_mode"/>
+                            <field name="notes" placeholder="e.g. Condition on handover, racket serial #..."/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_vanguard_rental" model="ir.actions.act_window">
+        <field name="name">Equipment Rentals</field>
+        <field name="res_model">vanguard.rental</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
     <!-- ─── MENUS ─────────────────────────────────────────────── -->
     <menuitem id="menu_root" name="Vanguard"/>
     <menuitem id="menu_facilities" name="Facilities" parent="menu_root" action="action_facility"/>
@@ -518,6 +635,7 @@
     <menuitem id="menu_tutors" name="Tutors" parent="menu_root" action="action_tutor"/>
     <menuitem id="menu_coaching_classes" name="Student Class Times" parent="menu_root" action="action_coaching_class"/>
     <menuitem id="menu_inventory" name="Inventory" parent="menu_root" action="action_vanguard_product"/>
+    <menuitem id="menu_rentals" name="Rentals" parent="menu_root" action="action_vanguard_rental"/>
     <menuitem id="menu_sales" name="Counter Sales" parent="menu_root" action="action_vanguard_sale"/>
     <menuitem id="menu_expenses" name="Expenses" parent="menu_root" action="action_vanguard_expense"/>
 </odoo>
