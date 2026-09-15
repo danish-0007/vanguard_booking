@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, exceptions
 from datetime import timedelta
 
 SPORT_TYPES = [
@@ -1219,7 +1219,7 @@ class VanguardRental(models.Model):
         if self.product_id:
             self.hourly_rate = self.product_id.rental_price_per_hour
 
-    @api.depends('start_time', 'end_time', 'hourly_rate', 'quantity', 'duration_hours')
+    @api.depends('start_time', 'end_time', 'hourly_rate', 'quantity')
     def _compute_duration_and_cost(self):
         for rec in self:
             # If duration is derived from start and end times
