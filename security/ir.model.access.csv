@@ -15,3 +15,4 @@ access_vanguard_inventory_purchase,vanguard.inventory.purchase,model_vanguard_in
 access_vanguard_sale,vanguard.sale,model_vanguard_sale,,1,1,1,1
 access_vanguard_sale_line,vanguard.sale.line,model_vanguard_sale_line,,1,1,1,1
 access_vanguard_expense,vanguard.expense,model_vanguard_expense,,1,1,1,1
+access_vanguard_rental,vanguard.rental,model_vanguard_rental,,1,1,1,1
